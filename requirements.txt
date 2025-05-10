@@ -1,0 +1,12 @@
+streamlit
+python-dotenv
+beautifulsoup4
+chromadb
+langchain
+google-generativeai
+pandas
+requests
+httpx
+ratelimit
+mem0ai
+onnxruntime
