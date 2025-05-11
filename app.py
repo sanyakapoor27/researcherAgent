@@ -22,7 +22,6 @@ import pandas as pd
 import time
 import logging
 from urllib.parse import urlparse
-from mem0 import MemoryClient
 import random
 import httpx
 from ratelimit import limits, sleep_and_retry
@@ -50,22 +49,20 @@ def get_gemini_client():
         return genai
     return None
 
-# Initialize Mem0 client
-def get_mem0_client():
-    if "MEM0_API_KEY" not in st.session_state:
-        st.session_state.MEM0_API_KEY = os.environ.get("MEM0_API_KEY", "")
-    
-    if not st.session_state.MEM0_API_KEY:
-        return None
-    
-    client = MemoryClient(
-        api_key=st.session_state.MEM0_API_KEY)
-    return client
-
 # Initialize ChromaDB for storing documents and citations
 @st.cache_resource
 def get_chroma_client():
-    client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet"))
+    try:
+        # First try the updated method for newer versions of ChromaDB
+        client = chromadb.Client(Settings(
+            chroma_db_impl="duckdb+parquet",
+            persist_directory=".chromadb"
+        ))
+    except Exception as e:
+        logger.warning(f"Failed to initialize ChromaDB with persist_directory: {e}")
+        # Fallback to in-memory if persist_directory doesn't work
+        client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet"))
+    
     # Create collections if they don't exist
     try:
         documents_collection = client.get_collection("research_documents")
@@ -220,87 +217,7 @@ def fetch_content_with_rate_limit(url):
         logger.error(f"Error fetching content from {url}: {e}")
         return f"Error fetching content: {str(e)}"
 
-# Mem0 memory functions
-def add_to_mem0(memory_item):
-    """Add item to Mem0 memory"""
-    mem0_client = get_mem0_client()
-    if not mem0_client:
-        logger.warning("Mem0 client not available, skipping memory addition")
-        return None
-    
-    try:
-        # Format the memory item for Mem0
-        memory_data = {
-            "type": memory_item["type"],
-            "content": memory_item["content"],
-            "query": memory_item.get("query", ""),
-            "source": memory_item.get("source", ""),
-            "timestamp": str(datetime.datetime.now())
-        }
-        
-        # Add to Mem0
-        memory_id = mem0_client.add(
-            content=json.dumps(memory_data),
-            metadata={
-                "type": memory_item["type"],
-                "query": memory_item.get("query", ""),
-                "timestamp": str(datetime.datetime.now())
-            }
-        )
-        
-        logger.info(f"Added memory to Mem0 with ID: {memory_id}")
-        return memory_id
-    except Exception as e:
-        logger.error(f"Error adding to Mem0: {e}")
-        return None
-
-def retrieve_from_mem0(query=None, memory_type=None, limit=5):
-    """Retrieve memories from Mem0"""
-    mem0_client = get_mem0_client()
-    if not mem0_client:
-        logger.warning("Mem0 client not available, skipping memory retrieval")
-        return []
-    
-    try:
-        # Prepare filter for Mem0
-        filter_criteria = {}
-        if memory_type:
-            filter_criteria["type"] = memory_type
-        
-        # Search in Mem0
-        if query:
-            search_results = mem0_client.search(
-                query=query,
-                filter=filter_criteria if filter_criteria else None,
-                limit=limit
-            )
-        else:
-            # Get all memories matching filter
-            search_results = mem0_client.get(
-                filter=filter_criteria if filter_criteria else None,
-                limit=limit
-            )
-        
-        # Process results
-        memories = []
-        for result in search_results:
-            memory_content = json.loads(result.content)
-            memories.append({
-                "content": memory_content["content"],
-                "metadata": {
-                    "type": memory_content["type"],
-                    "query": memory_content.get("query", ""),
-                    "source": memory_content.get("source", ""),
-                    "timestamp": memory_content.get("timestamp", "")
-                }
-            })
-        
-        return memories
-    except Exception as e:
-        logger.error(f"Error retrieving from Mem0: {e}")
-        return []
-
-# ChromaDB memory functions as backup/alternative
+# ChromaDB memory functions
 def add_to_memory(memory_item):
     """Add item to agent memory in ChromaDB"""
     client = get_chroma_client()
@@ -318,9 +235,6 @@ def add_to_memory(memory_item):
             "source": memory_item.get("source", "")
         }]
     )
-    
-    # Also add to Mem0 if available
-    mem0_id = add_to_mem0(memory_item)
     
     return item_id
 
@@ -372,23 +286,17 @@ def retrieve_relevant_documents(query, limit=5):
 
 def retrieve_memory(query=None, memory_type=None, limit=5):
     """Retrieve agent memory from ChromaDB, optionally filtered by query and type"""
-    # First try Mem0
-    mem0_memories = retrieve_from_mem0(query, memory_type, limit)
-    if mem0_memories:
-        return mem0_memories
-    
-    # Fall back to ChromaDB
     client = get_chroma_client()
     memory_collection = client.get_collection("agent_memory")
     
     if query:
-        filter_dict = {}
+        where_filter = None
         if memory_type:
-            filter_dict = {"$and": [{"type": memory_type}]}
+            where_filter = {"type": memory_type}
         
         results = memory_collection.query(
             query_texts=[query],
-            where=filter_dict if filter_dict else None,
+            where=where_filter,
             n_results=limit
         )
         
@@ -411,10 +319,17 @@ def retrieve_memory(query=None, memory_type=None, limit=5):
         
         memories = []
         for i, doc in enumerate(all_items["documents"]):
-            memories.append({
-                "content": doc,
-                "metadata": all_items["metadatas"][i] if "metadatas" in all_items else {}
-            })
+            if i < len(all_items["metadatas"]):
+                memories.append({
+                    "content": doc,
+                    "metadata": all_items["metadatas"][i]
+                })
+            else:
+                # Handle case where metadatas may be missing
+                memories.append({
+                    "content": doc,
+                    "metadata": {"type": "unknown"}
+                })
         
         return memories
 
@@ -656,10 +571,11 @@ def run_autonomous_research(query, depth=2):
                 added_docs = docs_collection.get(ids=doc_ids)
                 
                 for i, doc_text in enumerate(added_docs["documents"]):
-                    documents.append({
-                        "content": doc_text,
-                        "metadata": added_docs["metadatas"][i]
-                    })
+                    if i < len(added_docs["metadatas"]):
+                        documents.append({
+                            "content": doc_text,
+                            "metadata": added_docs["metadatas"][i]
+                        })
             except Exception as e:
                 logger.error(f"Error processing document {result['title']}: {e}")
                 st.error(f"Error processing document: {result['title']}")
@@ -700,12 +616,6 @@ def run_autonomous_research(query, depth=2):
 def display_memory_explorer():
     """Display and allow exploration of agent's memory"""
     st.write("## 🧠 Memory Explorer")
-    
-    # Check if Mem0 is available
-    mem0_available = get_mem0_client() is not None
-    
-    if mem0_available:
-        st.info("Using Mem0 for memory storage and retrieval")
     
     memories = retrieve_memory()
     
@@ -823,19 +733,20 @@ def display_citation_explorer():
         # Prepare data for display
         doc_data = []
         for i, doc_id in enumerate(all_docs["ids"]):
-            metadata = all_docs["metadatas"][i]
-            doc_data.append({
-                "ID": doc_id,
-                "Title": metadata.get("title", "Unknown"),
-                "Authors": metadata.get("authors", "Unknown"),
-                "Year": metadata.get("year", "Unknown"),
-                "Source": metadata.get("source", "Unknown"),
-                "Venue": metadata.get("venue", "Unknown"),
-                "URL": metadata.get("url", ""),
-                "Added": metadata.get("timestamp", "Unknown"),
-                "Preview": all_docs["documents"][i][:100] + "...",
-                "Full Content": all_docs["documents"][i]
-            })
+            if i < len(all_docs["metadatas"]):
+                metadata = all_docs["metadatas"][i]
+                doc_data.append({
+                    "ID": doc_id,
+                    "Title": metadata.get("title", "Unknown"),
+                    "Authors": metadata.get("authors", "Unknown"),
+                    "Year": metadata.get("year", "Unknown"),
+                    "Source": metadata.get("source", "Unknown"),
+                    "Venue": metadata.get("venue", "Unknown"),
+                    "URL": metadata.get("url", ""),
+                    "Added": metadata.get("timestamp", "Unknown"),
+                    "Preview": all_docs["documents"][i][:100] + "...",
+                    "Full Content": all_docs["documents"][i]
+                })
         
         # Convert to dataframe for easier filtering
         df = pd.DataFrame(doc_data)
@@ -891,19 +802,20 @@ def export_citation_list():
     # Get unique documents (by title)
     unique_docs = {}
     for i, doc_id in enumerate(all_docs["ids"]):
-        metadata = all_docs["metadatas"][i]
-        title = metadata.get("title", "Unknown")
-        
-        # Only add each unique document once
-        if title not in unique_docs and title != "Previous Research Summary":
-            unique_docs[title] = {
-                "title": title,
-                "authors": metadata.get("authors", ""),
-                "year": metadata.get("year", ""),
-                "venue": metadata.get("venue", ""),
-                "url": metadata.get("url", ""),
-                "source": metadata.get("source", "")
-            }
+        if i < len(all_docs["metadatas"]):
+            metadata = all_docs["metadatas"][i]
+            title = metadata.get("title", "Unknown")
+            
+            # Only add each unique document once
+            if title not in unique_docs and title != "Previous Research Summary":
+                unique_docs[title] = {
+                    "title": title,
+                    "authors": metadata.get("authors", ""),
+                    "year": metadata.get("year", ""),
+                    "venue": metadata.get("venue", ""),
+                    "url": metadata.get("url", ""),
+                    "source": metadata.get("source", "")
+                }
     
     # Format options
     citation_format = st.selectbox(
