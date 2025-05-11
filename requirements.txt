@@ -1,6 +1,7 @@
 streamlit
 python-dotenv
 beautifulsoup4
+pysqlite3-binary
 chromadb>=0.4.15
 duckdb>=0.9.1
 langchain

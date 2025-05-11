@@ -6,6 +6,12 @@ import uuid
 import requests
 from bs4 import BeautifulSoup
 import re
+import sys
+try:
+    import pysqlite3
+    sys.modules["sqlite3"] = sys.modules["pysqlite3"]
+except ImportError:
+    raise RuntimeError("pysqlite3-binary must be installed in requirements.txt")
 import chromadb
 from chromadb.config import Settings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
