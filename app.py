@@ -1039,15 +1039,6 @@ def configure_sidebar():
         if gemini_api_key:
             st.session_state.GEMINI_API_KEY = gemini_api_key
         
-        # Mem0 API Key
-        mem0_api_key = st.text_input(
-            "Mem0 API Key (Optional)",
-            value=st.session_state.get("MEM0_API_KEY", ""),
-            type="password"
-        )
-        if mem0_api_key:
-            st.session_state.MEM0_API_KEY = mem0_api_key
-        
         # Settings
         st.subheader("Settings")
         st.session_state.research_depth = st.slider(
@@ -1072,7 +1063,6 @@ def configure_sidebar():
             - Gemini for summarization
             - Semantic Scholar API for research
             - ChromaDB for document storage
-            - Mem0 for memory
             """
         )
         
@@ -1087,9 +1077,6 @@ def main():
     
     if "GEMINI_API_KEY" not in st.session_state:
         st.session_state.GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
-    
-    if "MEM0_API_KEY" not in st.session_state:
-        st.session_state.MEM0_API_KEY = os.environ.get("MEM0_API_KEY", "")
     
     # Configure the sidebar and get selected page
     page = configure_sidebar()
