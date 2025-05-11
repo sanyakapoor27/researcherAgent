@@ -13,7 +13,7 @@ try:
 except ImportError:
     raise RuntimeError("pysqlite3-binary must be installed in requirements.txt")
 import chromadb
-from chromadb.config import Settings
+from chromadb import PersistentClient
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 import google.generativeai as genai
@@ -54,10 +54,7 @@ def get_gemini_client():
 def get_chroma_client():
     try:
         # First try the updated method for newer versions of ChromaDB
-        client = chromadb.Client(Settings(
-            chroma_db_impl="duckdb+parquet",
-            persist_directory=".chromadb"
-        ))
+        client = PersistentClient(path="/tmp/chroma")
     except Exception as e:
         logger.warning(f"Failed to initialize ChromaDB with persist_directory: {e}")
         # Fallback to in-memory if persist_directory doesn't work
