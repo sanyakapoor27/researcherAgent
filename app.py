@@ -384,7 +384,7 @@ def generate_research_summary(query, documents):
         chat = model.start_chat()
 
         system_instruction = "You are a research planning assistant who creates practical research strategies.\n\n"
-        response = chat.send_message(system_instruction + prompt)
+        response = chat.generate_content(system_instruction + prompt)
 
         summary = response.text
         
@@ -434,7 +434,7 @@ def generate_follow_up_questions(query, summary):
         chat = model.start_chat()
         system_instruction = "You are a research assistant helping to identify valuable follow-up questions."
         
-        response = chat.send_message(system_instruction + prompt)
+        response = chat.generate_content(system_instruction + prompt)
         follow_up_questions = response.text
         
         return follow_up_questions
@@ -473,9 +473,9 @@ def get_research_plan(query):
         )
         
         chat = model.start_chat()
-        system_instruction=["You are a research planning assistant who creates practical research strategies."]
+        system_instruction="You are a research planning assistant who creates practical research strategies."
 
-        response = chat.send_message(system_instruction + prompt)
+        response = chat.generate_content(system_instruction + prompt)
         plan = response.text
         
         # Store this plan in memory
