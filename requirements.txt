@@ -1,7 +1,8 @@
 streamlit
 python-dotenv
 beautifulsoup4
-chromadb
+chromadb>=0.4.15
+duckdb>=0.9.1
 langchain
 google-generativeai
 pandas

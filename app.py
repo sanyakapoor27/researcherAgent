@@ -7,6 +7,7 @@ import requests
 from bs4 import BeautifulSoup
 import re
 import chromadb
+from chromadb.config import Settings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 import google.generativeai as genai
@@ -58,7 +59,7 @@ def get_mem0_client():
 # Initialize ChromaDB for storing documents and citations
 @st.cache_resource
 def get_chroma_client():
-    client = chromadb.Client()
+    client = chromadb.Client(Settings(chroma_db_impl="duckdb+parquet"))
     # Create collections if they don't exist
     try:
         documents_collection = client.get_collection("research_documents")
