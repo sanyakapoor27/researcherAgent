@@ -381,16 +381,11 @@ def generate_research_summary(query, documents):
             safety_settings=safety_settings,
         )
         
-        chat = model.start_chat(
-            history=[
-                {
-                    "role": "system",
-                    "parts": ["You are a precise research assistant that summarizes academic information with proper citations."]
-                }
-            ]
-        )
-        
-        response = chat.send_message(prompt)
+        chat = model.start_chat()
+
+        system_instruction = "You are a research planning assistant who creates practical research strategies.\n\n"
+        response = chat.send_message(system_instruction + prompt)
+
         summary = response.text
         
         # Store this summary in memory
@@ -436,16 +431,10 @@ def generate_follow_up_questions(query, summary):
             generation_config=generation_config,
         )
         
-        chat = model.start_chat(
-            history=[
-                {
-                    "role": "system",
-                    "parts": ["You are a research assistant helping to identify valuable follow-up questions."]
-                }
-            ]
-        )
+        chat = model.start_chat()
+        system_instruction = "You are a research assistant helping to identify valuable follow-up questions."
         
-        response = chat.send_message(prompt)
+        response = chat.send_message(system_instruction + prompt)
         follow_up_questions = response.text
         
         return follow_up_questions
@@ -483,16 +472,10 @@ def get_research_plan(query):
             generation_config=generation_config,
         )
         
-        chat = model.start_chat(
-            history=[
-                {
-                    "role": "system",
-                    "parts": ["You are a research planning assistant who creates practical research strategies."]
-                }
-            ]
-        )
-        
-        response = chat.send_message(prompt)
+        chat = model.start_chat()
+        system_instruction=["You are a research planning assistant who creates practical research strategies."]
+
+        response = chat.send_message(system_instruction + prompt)
         plan = response.text
         
         # Store this plan in memory
@@ -540,7 +523,12 @@ def run_autonomous_research(query, depth=2):
             st.write(f"**{i+1}. {result['title']}** ({result.get('year', 'n/a')})")
             st.write(f"_{authors_str}_ | {result.get('venue', 'Unknown venue')}")
             st.write(f"URL: {result['url']}")
-            st.write(result['abstract'][:300] + ("..." if len(result['abstract']) > 300 else ""))
+            abstract = result.get('abstract')
+            if abstract:
+                st.write(abstract[:300] + ("..." if len(abstract) > 300 else ""))
+            else:
+                st.write("_No abstract available._")
+
     
     # Step 4: Fetch and process content
     documents = []
